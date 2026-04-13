@@ -1475,6 +1475,19 @@
 <script>
 'use strict';
 
+/* ─── OWASP A03 – XSS Prevention ────────────────────────────────────────
+   Toute donnée utilisateur ou externe insérée via innerHTML DOIT passer
+   par escHTML() pour neutraliser les caractères HTML spéciaux.           */
+function escHTML(str) {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    TARIFS RÉGIONAUX 2024 (taxe Y1 = CV × tarif)
    Source : Direction générale des Finances publiques (DGFIP)
@@ -1800,13 +1813,14 @@ let adresseMeta = { label: '', postcode: '', city: '', street: '' };
       return;
     }
     currentItems = features;
+    // OWASP A03 — données API externe échappées avant injection innerHTML
     const html = features.map((f, i) => {
       const p = f.properties;
       return `<div class="addr-item" role="option" data-idx="${i}">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
         <div>
-          <div class="addr-item-main">${p.name || p.label}</div>
-          <div class="addr-item-sub">${p.postcode || ''} ${p.city || ''}</div>
+          <div class="addr-item-main">${escHTML(p.name || p.label)}</div>
+          <div class="addr-item-sub">${escHTML(p.postcode || '')} ${escHTML(p.city || '')}</div>
         </div>
       </div>`;
     }).join('');
@@ -2002,10 +2016,13 @@ Object.keys(rules).forEach(id => {
   const modeleEl    = document.getElementById('modele');
   let focusedIdx    = -1;
 
+  // OWASP A03 — le texte et la query sont échappés avant injection innerHTML
   function highlight(text, query) {
-    if (!query) return text;
-    const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
-    return text.replace(re, '<mark>$1</mark>');
+    const safeText = escHTML(text);
+    if (!query) return safeText;
+    const safeQuery = escHTML(query).replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
+    const re = new RegExp('(' + safeQuery + ')', 'gi');
+    return safeText.replace(re, '<mark>$1</mark>');
   }
 
   function openDropdown(items) {
@@ -2340,35 +2357,43 @@ function showConfirmation() {
   const regionNom = t.region ? t.region.nom : '—';
   const totalStr  = t.total.toFixed(2).replace('.',',') + ' €';
 
+  // OWASP A03 — toutes les valeurs utilisateur sont échappées avant innerHTML
+  const ePrenom = escHTML(prenom), eNom = escHTML(nom), eEmail = escHTML(email);
+  const eMarque = escHTML(marque), eModele = escHTML(modele), eImmat = escHTML(immat);
+  const eRegion = escHTML(regionNom), eRef = escHTML(ref);
+  const eDateCirc = dc ? escHTML(new Date(dc).toLocaleDateString('fr-FR')) : '—';
+  const eDate = escHTML(new Date().toLocaleDateString('fr-FR'));
+  const eTotal = escHTML(totalStr);
+
   const receiptHTML = `
-    <div class="receipt-row"><span>Titulaire</span><strong>${prenom} ${nom}</strong></div>
-    <div class="receipt-row"><span>E-mail</span><strong>${email}</strong></div>
-    <div class="receipt-row"><span>Véhicule</span><strong>${marque} ${modele} — ${immat}</strong></div>
-    <div class="receipt-row"><span>1ère circulation</span><strong>${dc ? new Date(dc).toLocaleDateString('fr-FR') : '—'}</strong></div>
-    <div class="receipt-row"><span>Région</span><strong>${regionNom}</strong></div>
-    <div class="receipt-row"><span>Y1 — Taxe régionale${t.isElec?' (exonéré)':t.isOld?' (−50%)':''}</span><strong>${t.Y1.toFixed(2).replace('.',',')} €</strong></div>
+    <div class="receipt-row"><span>Titulaire</span><strong>${ePrenom} ${eNom}</strong></div>
+    <div class="receipt-row"><span>E-mail</span><strong>${eEmail}</strong></div>
+    <div class="receipt-row"><span>Véhicule</span><strong>${eMarque} ${eModele} — ${eImmat}</strong></div>
+    <div class="receipt-row"><span>1ère circulation</span><strong>${eDateCirc}</strong></div>
+    <div class="receipt-row"><span>Région</span><strong>${eRegion}</strong></div>
+    <div class="receipt-row"><span>Y1 — Taxe régionale${t.isElec?' (exonéré)':t.isOld?' (−50%)':''}</span><strong>${escHTML(t.Y1.toFixed(2).replace('.',','))} €</strong></div>
     <div class="receipt-row"><span>Y4 — Redevance de gestion</span><strong>11,00 €</strong></div>
     <div class="receipt-row"><span>Y5 — Redevance ANTS</span><strong>2,76 €</strong></div>
-    <div class="receipt-row total"><span>Total payé</span><span>${totalStr}</span></div>
-    <div style="font-size:11px;color:var(--muted);margin-top:8px">Réf. dossier : <strong>${ref}</strong> · Date : ${new Date().toLocaleDateString('fr-FR')}</div>
+    <div class="receipt-row total"><span>Total payé</span><span>${eTotal}</span></div>
+    <div style="font-size:11px;color:var(--muted);margin-top:8px">Réf. dossier : <strong>${eRef}</strong> · Date : ${eDate}</div>
   `;
   document.getElementById('receipt-summary').innerHTML = receiptHTML;
 
   // Populate print receipt
   document.getElementById('print-receipt').innerHTML = `
     <h1 style="font-family:'Inter',sans-serif;color:#1e293b">Récapitulatif de Demande de Carte Grise</h1>
-    <p style="color:#6B7280;margin-bottom:4px">Référence : <strong>${ref}</strong> · Émis le ${new Date().toLocaleDateString('fr-FR')}</p>
+    <p style="color:#6B7280;margin-bottom:4px">Référence : <strong>${eRef}</strong> · Émis le ${eDate}</p>
     <table><thead><tr><th>Désignation</th><th>Détail</th></tr></thead><tbody>
-      <tr><td>Titulaire</td><td>${prenom} ${nom}</td></tr>
-      <tr><td>E-mail</td><td>${email}</td></tr>
-      <tr><td>Véhicule</td><td>${marque} ${modele}</td></tr>
-      <tr><td>Immatriculation</td><td>${immat}</td></tr>
-      <tr><td>1ère mise en circulation</td><td>${dc ? new Date(dc).toLocaleDateString('fr-FR') : '—'}</td></tr>
-      <tr><td>Région</td><td>${regionNom}</td></tr>
-      <tr><td>Y1 — Taxe régionale</td><td>${t.Y1.toFixed(2).replace('.',',')} €${t.isElec?' (exonéré)':t.isOld?' (réduction 50%)':''}</td></tr>
+      <tr><td>Titulaire</td><td>${ePrenom} ${eNom}</td></tr>
+      <tr><td>E-mail</td><td>${eEmail}</td></tr>
+      <tr><td>Véhicule</td><td>${eMarque} ${eModele}</td></tr>
+      <tr><td>Immatriculation</td><td>${eImmat}</td></tr>
+      <tr><td>1ère mise en circulation</td><td>${eDateCirc}</td></tr>
+      <tr><td>Région</td><td>${eRegion}</td></tr>
+      <tr><td>Y1 — Taxe régionale</td><td>${escHTML(t.Y1.toFixed(2).replace('.',','))} €${t.isElec?' (exonéré)':t.isOld?' (réduction 50%)':''}</td></tr>
       <tr><td>Y4 — Redevance gestion</td><td>11,00 €</td></tr>
       <tr><td>Y5 — Redevance ANTS</td><td>2,76 €</td></tr>
-    </tbody><tfoot><tr class="total-row"><td><strong>Total payé</strong></td><td><strong>${totalStr}</strong></td></tr></tfoot></table>
+    </tbody><tfoot><tr class="total-row"><td><strong>Total payé</strong></td><td><strong>${eTotal}</strong></td></tr></tfoot></table>
     <p style="margin-top:24px;font-size:12px;color:#64748b">Document émis par PreFect Services — Service Privé d'Immatriculation. Conservez ce document. Conformément au RGPD, vos données personnelles sont traitées de façon sécurisée et confidentielle.</p>
   `;
 
