@@ -617,6 +617,24 @@
       .modal-body   { padding:18px 16px; }
       .modal-head   { padding:16px; }
     }
+    /* ─── AUTOCOMPLETE MARQUE ──────────────────────────────── */
+    .autocomplete-wrap { position:relative; }
+    .autocomplete-wrap input[type="text"] { width:100%; }
+    .autocomplete-dropdown {
+      position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:200;
+      background:var(--white); border:1.5px solid var(--indigo);
+      border-radius:10px; box-shadow:var(--shadow-lg);
+      max-height:220px; overflow-y:auto; display:none;
+    }
+    .autocomplete-dropdown.open { display:block; }
+    .autocomplete-item {
+      padding:9px 14px; font-size:13.5px; cursor:pointer;
+      transition:background .15s; border-bottom:1px solid var(--bg-dk);
+    }
+    .autocomplete-item:last-child { border-bottom:none; }
+    .autocomplete-item:hover, .autocomplete-item.focused { background:rgba(99,102,241,.08); color:var(--indigo); }
+    .autocomplete-item mark { background:none; color:var(--indigo); font-weight:700; }
+
   </style>
 </head>
 <body>
@@ -760,15 +778,21 @@
             <input type="text" id="immatriculation" placeholder="AB-123-CD" maxlength="9">
             <span class="err-msg">Format invalide. Format SIV attendu : AB-123-CD.</span>
           </div>
-          <div class="field" id="f-marque">
-            <label for="marque">Marque</label>
-            <input type="text" id="marque" placeholder="Peugeot">
-            <span class="err-msg">Veuillez saisir la marque.</span>
+          <div class="field autocomplete-field" id="f-marque">
+            <label for="marque-search">Marque</label>
+            <div class="autocomplete-wrap">
+              <input type="text" id="marque-search" placeholder="Rechercher une marque…" autocomplete="off">
+              <input type="hidden" id="marque">
+              <div class="autocomplete-dropdown" id="marque-dropdown"></div>
+            </div>
+            <span class="err-msg">Veuillez sélectionner une marque dans la liste.</span>
           </div>
           <div class="field" id="f-modele">
             <label for="modele">Modèle</label>
-            <input type="text" id="modele" placeholder="308 SW">
-            <span class="err-msg">Veuillez saisir le modèle.</span>
+            <select id="modele" disabled>
+              <option value="">— Sélectionnez d'abord une marque —</option>
+            </select>
+            <span class="err-msg">Veuillez sélectionner un modèle dans la liste.</span>
           </div>
           <div class="field" id="f-datecirculation">
             <label for="datecirculation">Date de 1ère mise en circulation</label>
@@ -1456,6 +1480,50 @@
    Source : Direction générale des Finances publiques (DGFIP)
    Arrêté du 1er janvier 2024
 ══════════════════════════════════════════════════════════════════════════ */
+/* ─── MARQUES & MODÈLES ──────────────────────────────────────────────── */
+const MARQUES_MODELES = {
+  'Abarth':          ['500','595','695'],
+  'Alfa Romeo':      ['147','156','159','Giulia','Giulietta','GTV','Mito','Stelvio','Tonale'],
+  'Aston Martin':    ['DB11','DB9','DBX','Vantage'],
+  'Audi':            ['A1','A2','A3','A4','A5','A6','A7','A8','e-tron','Q2','Q3','Q4 e-tron','Q5','Q7','Q8','R8','TT'],
+  'BMW':             ['i3','i4','i7','iX','Série 1','Série 2','Série 3','Série 4','Série 5','Série 6','Série 7','Série 8','X1','X2','X3','X4','X5','X6','X7','Z4'],
+  'Citroën':         ['Ami','Berlingo','C1','C2','C3','C3 Aircross','C4','C4 X','C5','C5 Aircross','C5 X','C6','Grand Picasso','Jumper','Jumpy','Nemo','Picasso','Saxo','SpaceTourer','Xantia','Xsara'],
+  'Cupra':           ['Ateca','Born','Formentor','Leon'],
+  'Dacia':           ['Bigster','Dokker','Duster','Jogger','Lodgy','Logan','Sandero','Spring'],
+  'DS Automobiles':  ['DS 3','DS 3 Crossback','DS 4','DS 4 Crossback','DS 5','DS 7','DS 7 Crossback','DS 9'],
+  'Ferrari':         ['296 GTB','488','812 Superfast','F8 Tributo','Portofino','Roma','SF90 Stradale'],
+  'Fiat':            ['500','500C','500L','500X','Bravo','Doblo','Ducato','Fiorino','Grande Punto','Panda','Punto','Scudo','Tipo'],
+  'Ford':            ['B-Max','C-Max','EcoSport','Edge','Fiesta','Focus','Galaxy','Ka','Kuga','Mondeo','Mustang','Mustang Mach-E','Puma','Ranger','S-Max','Transit','Tourneo'],
+  'Honda':           ['Accord','Civic','CR-V','e','HR-V','Jazz','NSX','ZR-V'],
+  'Hyundai':         ['Bayon','i10','i20','i30','i40','IONIQ','IONIQ 5','IONIQ 6','Kona','Nexo','Santa Fe','Tucson'],
+  'Jaguar':          ['E-Pace','F-Pace','F-Type','I-Pace','XE','XF','XJ'],
+  'Jeep':            ['Avenger','Cherokee','Commander','Compass','Grand Cherokee','Renegade','Wrangler'],
+  'Kia':             ['Ceed','EV6','Niro','Picanto','ProCeed','Rio','Sorento','Soul','Sportage','Stinger','Stonic','XCeed'],
+  'Lamborghini':     ['Aventador','Huracán','Urus'],
+  'Land Rover':      ['Defender','Discovery','Discovery Sport','Freelander','Range Rover','Range Rover Evoque','Range Rover Sport','Range Rover Velar'],
+  'Lexus':           ['CT','ES','IS','LC','LX','NX','RX','UX'],
+  'Maserati':        ['Ghibli','GranTurismo','Grecale','Levante','Quattroporte'],
+  'Mazda':           ['2','3','6','CX-3','CX-30','CX-5','CX-60','MX-30','MX-5'],
+  'Mercedes-Benz':   ['Classe A','Classe B','Classe C','Classe CLA','Classe CLS','Classe E','Classe G','Classe GLA','Classe GLB','Classe GLC','Classe GLE','Classe GLS','Classe S','Classe SL','Classe V','EQA','EQB','EQC','EQE','EQS','EQV','Sprinter','Vito'],
+  'MG':              ['4','5','EHS','MG3','ZS'],
+  'MINI':            ['Cabrio','Clubman','Countryman','John Cooper Works','MINI 3 portes','MINI 5 portes','Paceman'],
+  'Mitsubishi':      ['ASX','Colt','Eclipse Cross','L200','Outlander','Space Star'],
+  'Nissan':          ['370Z','Ariya','Juke','Leaf','Micra','Note','Primastar','Qashqai','X-Trail'],
+  'Opel':            ['Adam','Agila','Astra','Combo','Corsa','Crossland','Grandland','Insignia','Meriva','Mokka','Movano','Vectra','Vivaro','Zafira'],
+  'Peugeot':         ['1007','107','108','2008','206','207','208','3008','301','307','308','4007','4008','405','406','407','408','5008','508','607','Boxer','Expert','Partner','Rifter','Traveller'],
+  'Porsche':         ['718 Boxster','718 Cayman','911','Cayenne','Macan','Panamera','Taycan'],
+  'Renault':         ['Alpine A110','Arkana','Austral','Captur','Clio','Espace','Express','Kangoo','Koleos','Laguna','Master','Megane','Modus','Scenic','Symbol','Talisman','Twingo','Zoe'],
+  'SEAT':            ['Arona','Ateca','Ibiza','Leon','Mii','Tarraco'],
+  'Škoda':           ['Fabia','Kamiq','Karoq','Kodiaq','Octavia','Rapid','Superb'],
+  'Smart':           ['EQ forfour','EQ fortwo','forfour','fortwo'],
+  'Subaru':          ['BRZ','Forester','Impreza','Legacy','Outback','XV'],
+  'Suzuki':          ['Alto','Baleno','Celerio','Ignis','Jimny','S-Cross','Swift','SX4','Vitara'],
+  'Tesla':           ['Model 3','Model S','Model X','Model Y'],
+  'Toyota':          ['Aygo','Aygo X','bZ4X','C-HR','Camry','Corolla','GR86','GR Yaris','Land Cruiser','Mirai','Prius','ProAce','RAV4','Supra','Yaris','Yaris Cross'],
+  'Volkswagen':      ['Arteon','Caddy','California','Golf','ID.3','ID.4','ID.5','ID.7','Multivan','Passat','Polo','Scirocco','Sharan','T-Cross','T-Roc','Taigo','Tiguan','Touareg','Touran','Transporter','Up!'],
+  'Volvo':           ['C40','S60','S90','V40','V60','V90','XC40','XC60','XC90'],
+};
+
 const REGIONS = {
   idf:  { nom: 'Île-de-France',                 tarif: 54.95 },
   ara:  { nom: 'Auvergne-Rhône-Alpes',          tarif: 45.20 },
@@ -1791,8 +1859,8 @@ const rules = {
   codepostal:      { test: v => /^\d{5}$/.test(v),                                           msg: 'Code postal invalide (5 chiffres).' },
   ville:           { test: v => v.trim().length >= 2,                                         msg: 'Commune requise.' },
   immatriculation: { test: v => /^[A-Z]{2}-\d{3}-[A-Z]{2}$/.test(v.toUpperCase()),           msg: 'Format SIV requis : AB-123-CD.' },
-  marque:          { test: v => v.trim().length >= 2,                                         msg: 'Marque requise.' },
-  modele:          { test: v => v.trim().length >= 1,                                         msg: 'Modèle requis.' },
+  marque:          { test: v => Object.prototype.hasOwnProperty.call(MARQUES_MODELES, v),     msg: 'Veuillez sélectionner une marque dans la liste.' },
+  modele:          { test: v => v !== '' && v !== undefined,                                  msg: 'Veuillez sélectionner un modèle dans la liste.' },
   datecirculation: { test: v => v && new Date(v) <= new Date(),                               msg: 'Date invalide ou future.' },
   cv:              { test: v => /^\d+$/.test(v) && +v >= 1 && +v <= 99,                       msg: 'Puissance entre 1 et 99 CV.' },
   region:          { test: v => !!REGIONS[v],                                                 msg: 'Sélectionnez votre région.' },
@@ -1851,6 +1919,90 @@ Object.keys(rules).forEach(id => {
     if (document.getElementById('f-'+id)?.classList.contains('error') && rules[id].test(el.value)) markOk(id);
   });
 });
+
+// ─── AUTOCOMPLETE MARQUE ─────────────────────────────────────────────────
+(function() {
+  const searchInput = document.getElementById('marque-search');
+  const hiddenInput = document.getElementById('marque');
+  const dropdown    = document.getElementById('marque-dropdown');
+  const modeleEl    = document.getElementById('modele');
+  let focusedIdx    = -1;
+
+  function highlight(text, query) {
+    if (!query) return text;
+    const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g,'\\$&') + ')', 'gi');
+    return text.replace(re, '<mark>$1</mark>');
+  }
+
+  function openDropdown(items) {
+    focusedIdx = -1;
+    dropdown.innerHTML = '';
+    items.forEach((marque, i) => {
+      const div = document.createElement('div');
+      div.className = 'autocomplete-item';
+      div.innerHTML = highlight(marque, searchInput.value.trim());
+      div.addEventListener('mousedown', e => { e.preventDefault(); selectMarque(marque); });
+      dropdown.appendChild(div);
+    });
+    dropdown.classList.toggle('open', items.length > 0);
+  }
+
+  function closeDropdown() { dropdown.classList.remove('open'); focusedIdx = -1; }
+
+  function selectMarque(marque) {
+    searchInput.value  = marque;
+    hiddenInput.value  = marque;
+    closeDropdown();
+    markOk('marque');
+    // Populate model select
+    modeleEl.innerHTML = '<option value="">— Sélectionnez un modèle —</option>';
+    (MARQUES_MODELES[marque] || []).forEach(m => {
+      const opt = document.createElement('option'); opt.value = m; opt.textContent = m;
+      modeleEl.appendChild(opt);
+    });
+    modeleEl.disabled = false;
+    modeleEl.value = '';
+    document.getElementById('f-modele').classList.remove('valid','error');
+  }
+
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim().toLowerCase();
+    hiddenInput.value = '';                          // invalidate until re-selected
+    modeleEl.innerHTML = '<option value="">— Sélectionnez d\'abord une marque —</option>';
+    modeleEl.disabled = true;
+    document.getElementById('f-modele').classList.remove('valid','error');
+    if (!q) { closeDropdown(); return; }
+    const matches = Object.keys(MARQUES_MODELES).filter(m => m.toLowerCase().includes(q));
+    openDropdown(matches);
+  });
+
+  searchInput.addEventListener('keydown', e => {
+    const items = dropdown.querySelectorAll('.autocomplete-item');
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault(); focusedIdx = Math.min(focusedIdx + 1, items.length - 1);
+      items.forEach((el,i) => el.classList.toggle('focused', i === focusedIdx));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault(); focusedIdx = Math.max(focusedIdx - 1, 0);
+      items.forEach((el,i) => el.classList.toggle('focused', i === focusedIdx));
+    } else if (e.key === 'Enter' && focusedIdx >= 0) {
+      e.preventDefault(); selectMarque(Object.keys(MARQUES_MODELES).filter(m => m.toLowerCase().includes(searchInput.value.trim().toLowerCase()))[focusedIdx]);
+    } else if (e.key === 'Escape') {
+      closeDropdown();
+    }
+  });
+
+  searchInput.addEventListener('focus', () => document.getElementById('f-marque')?.classList.add('focused'));
+  searchInput.addEventListener('blur',  () => {
+    setTimeout(closeDropdown, 150);
+    document.getElementById('f-marque')?.classList.remove('focused');
+    if (!hiddenInput.value) markErr('marque', 'Veuillez sélectionner une marque dans la liste.');
+  });
+
+  modeleEl.addEventListener('change', () => {
+    modeleEl.value ? markOk('modele') : markErr('modele', 'Veuillez sélectionner un modèle dans la liste.');
+  });
+})();
 
 // Immatriculation auto-format
 document.getElementById('immatriculation').addEventListener('input', function() {
